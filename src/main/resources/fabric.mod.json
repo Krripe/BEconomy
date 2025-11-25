@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "beconomy",
+  "version": "${version}",
+  "name": "BEconomy",
+  "description": "",
+  "authors": [],
+  "contact": {},
+  "license": "LGPL-3.0",
+  "icon": "assets/beconomy/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "org.krripe.beconomy.Beconomy"
+    ]
+  },
+  "mixins": [
+    "beconomy.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-language-kotlin": ">=${kotlin_loader_version}",
+    "fabric": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
