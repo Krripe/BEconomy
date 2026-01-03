@@ -341,4 +341,69 @@ interface EconomyAPI {
      */
     fun getTopBalances(currencyType: String, limit: Int): List<PlayerBalance>
 
+    /**
+     * Calculates the total value of all physical currency items (banknotes/coins)
+     * in the player's inventory for the given currency type.
+     *
+     * The value is computed using the same denomination rules as the `/eco deposit`
+     * command (configured denominations + base item).
+     *
+     * Note: This only works for online players, since it needs access to the
+     * live inventory. If the player is offline or not found, this should
+     * return `BigDecimal.ZERO`.
+     *
+     * @param playerId The UUID of the player.
+     * @param currencyType The currency type to scan the inventory for.
+     * @return The total value of all matching currency items as a BigDecimal.
+     */
+    fun getInventoryValue(playerId: UUID, currencyType: String): BigDecimal
+
+    /**
+     * Returns the "effective" balance of the player for the given currency:
+     * the sum of the virtual balance stored in BEconomy and the value of all
+     * matching currency items in the player's inventory.
+     *
+     * This is intended for shop GUIs or other systems that want to display or
+     * check against the total amount of money the player actually has available.
+     *
+     * @param playerId The UUID of the player.
+     * @param currencyType The currency type to calculate for.
+     * @return Virtual balance + inventory value as a BigDecimal.
+     */
+    fun getEffectiveBalance(playerId: UUID, currencyType: String): BigDecimal
+
+    /**
+     * Checks if the player has enough total funds for a extract when combining
+     * both their virtual balance and the value of all currency items in their
+     * inventory.
+     *
+     * @param playerId The UUID of the player.
+     * @param amount The required amount.
+     * @param currencyType The currency type to check.
+     * @return True if the player has enough effective funds, false otherwise.
+     */
+    fun hasEnoughEffectiveFunds(playerId: UUID, amount: BigDecimal, currencyType: String): Boolean
+
+    /**
+     * Attempts to subtract an amount from the player using both their virtual
+     * balance and their physical currency items.
+     *
+     * Behaviour:
+     *  - If (virtual balance + inventory value) is LESS than `amount`, the method
+     *    returns false and DOES NOT modify the balance or inventory.
+     *  - If there are enough total funds:
+     *      1. All matching currency items for this currency type are converted
+     *         into virtual balance (they are removed from the inventory and their
+     *         total value is added to the balance).
+     *      2. The final payment is performed using `subtractBalance(...)`.
+     *
+     * This makes it easy for external systems (shops, etc.) to charge players
+     * while automatically consuming banknotes as part of the payment.
+     *
+     * @param playerId The UUID of the player.
+     * @param amount The amount to subtract.
+     * @param currencyType The currency type to use.
+     * @return True if the operation succeeded, false otherwise.
+     */
+    fun subtractUsingBalanceAndInventory(playerId: UUID, amount: BigDecimal, currencyType: String): Boolean
 }

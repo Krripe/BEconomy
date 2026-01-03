@@ -2,8 +2,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "2.2.21"
-    id("fabric-loom") version "1.13.6"
+    kotlin("jvm") version "2.3.0"
+    id("fabric-loom") version "1.14.10"
     id("maven-publish")
 }
 
@@ -44,7 +44,7 @@ dependencies {
 
     modImplementation("net.fabricmc.fabric-api:fabric-api:${project.property("fabric_version")}")
     modImplementation(files("libs/fabric-permissions-api-0.3.1.jar"))
-    modImplementation(files("libs/Gts-2.4.2-fabric.jar"))
+    modImplementation(files("libs/Gts-2.5.1-fabric.jar"))
 
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.apache.logging.log4j:log4j-core:2.24.0")
@@ -63,15 +63,6 @@ tasks.processResources {
     inputs.property("minecraft_version", project.property("minecraft_version"))
     inputs.property("loader_version", project.property("loader_version"))
     filteringCharset = "UTF-8"
-
-    filesMatching("fabric.mod.json") {
-        expand(
-            "version" to project.version,
-            "minecraft_version" to project.property("minecraft_version"),
-            "loader_version" to project.property("loader_version"),
-            "kotlin_loader_version" to project.property("kotlin_loader_version")
-        )
-    }
 }
 
 tasks.withType<JavaCompile>().configureEach {

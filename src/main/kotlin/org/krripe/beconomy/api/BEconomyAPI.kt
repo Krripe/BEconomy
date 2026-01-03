@@ -379,4 +379,94 @@ class BlanketEconomyAPI(override val server: MinecraftServer) : EconomyAPI {
                 ?.take(limit) ?: emptyList()
         }
     }
+
+    private fun getDenominationValue(stack: ItemStack, currencyType: String): BigDecimal? {
+        val currencyCfg = ConfigManager.config.economy
+            .find { it.currencyType == currencyType } ?: return null
+
+        val denoms = currencyCfg.denominations.orEmpty()
+        for (denom in denoms) {
+            val denomItem = Registries.ITEM.get(Identifier.of(denom.material))
+            if (stack.item != denomItem) continue
+
+            if (denom.matchOnlyMaterial) {
+                return denom.value
+            }
+
+            val data = stack.get(DataComponentTypes.CUSTOM_MODEL_DATA)?.value
+            if (denom.custommodeldata == 0 || data == denom.custommodeldata) {
+                return denom.value
+            }
+        }
+
+        val baseItem = Registries.ITEM.get(Identifier.of(currencyCfg.material))
+        if (stack.item != baseItem) return null
+
+        if (currencyCfg.matchOnlyMaterial) {
+            return BigDecimal.ONE
+        }
+
+        val baseData = stack.get(DataComponentTypes.CUSTOM_MODEL_DATA)?.value
+        return if (baseData == currencyCfg.custommodeldata) BigDecimal.ONE else null
+    }
+
+    override fun getInventoryValue(playerId: UUID, currencyType: String): BigDecimal {
+        val player = getPlayerById(playerId) ?: return BigDecimal.ZERO
+        var total = BigDecimal.ZERO
+
+        player.inventory.main.forEach { stack ->
+            if (stack.isEmpty) return@forEach
+            val perItem = getDenominationValue(stack, currencyType) ?: return@forEach
+            val stackTotal = perItem.multiply(BigDecimal(stack.count))
+            total = total.add(stackTotal)
+        }
+
+        return total
+    }
+
+    override fun getEffectiveBalance(playerId: UUID, currencyType: String): BigDecimal {
+        val virtual = getBalance(playerId, currencyType)
+        val inventory = getInventoryValue(playerId, currencyType)
+        return virtual.add(inventory)
+    }
+
+    override fun hasEnoughEffectiveFunds(playerId: UUID, amount: BigDecimal, currencyType: String): Boolean {
+        if (amount <= BigDecimal.ZERO) return true
+        return getEffectiveBalance(playerId, currencyType) >= amount
+    }
+
+    override fun subtractUsingBalanceAndInventory(
+        playerId: UUID,
+        amount: BigDecimal,
+        currencyType: String
+    ): Boolean {
+        if (amount <= BigDecimal.ZERO) return false
+
+        val player = getPlayerById(playerId) ?: return false
+        val virtual = getBalance(playerId, currencyType)
+        val inventoryValue = getInventoryValue(playerId, currencyType)
+
+        if (virtual.add(inventoryValue) < amount) {
+            return false
+        }
+
+        val collected = collectInventoryCurrency(player, currencyType)
+        if (collected > BigDecimal.ZERO) {
+            addBalance(playerId, collected, currencyType)
+        }
+        return subtractBalance(playerId, amount, currencyType)
+    }
+
+    private fun collectInventoryCurrency(player: ServerPlayerEntity, currencyType: String): BigDecimal {
+        var total = BigDecimal.ZERO
+
+        player.inventory.main.forEachIndexed { index, stack ->
+            if (stack.isEmpty) return@forEachIndexed
+            val perItem = getDenominationValue(stack, currencyType) ?: return@forEachIndexed
+            val stackTotal = perItem.multiply(BigDecimal(stack.count))
+            total = total.add(stackTotal)
+            player.inventory.removeStack(index)
+        }
+        return total
+    }
 }

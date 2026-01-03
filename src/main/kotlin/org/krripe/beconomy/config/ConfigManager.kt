@@ -36,6 +36,16 @@ object ConfigManager {
         val password: String? = null
     )
 
+    data class DenominationConfig(
+        val value: BigDecimal,
+        val material: String,
+        val custommodeldata: Int = 0,
+        val name: String,
+        val lore: List<String> = listOf(),
+        val matchOnlyMaterial: Boolean = false,
+        val id: String? = null
+    )
+
     data class EconomyConfig(
         val name: String,
         val lore: List<String>,
@@ -47,7 +57,8 @@ object ConfigManager {
         var isPrimary: Boolean = false,
         val transfer: Boolean = true,
         val withdraw: Boolean = true,
-        val matchOnlyMaterial: Boolean = false
+        val matchOnlyMaterial: Boolean = false,
+        val denominations: List<DenominationConfig>? = null
     )
 
     data class GuiConfig(
@@ -158,31 +169,97 @@ object ConfigManager {
                     symbol = "$",
                     isPrimary = true,
                     transfer = true,
-                    withdraw = true
+                    withdraw = true,
+                    matchOnlyMaterial = false,
+                    denominations = listOf(
+                        DenominationConfig(
+                            id = "cobble_0",
+                            value = BigDecimal("0.5"),
+                            material = "minecraft:paper",
+                            custommodeldata = 7382,
+                            name = "&e0.5 CobbleCoins",
+                            lore = listOf("&7Value: 0.5 CobbleCoins"),
+                            matchOnlyMaterial = false
+                        ),
+                        DenominationConfig(
+                            id = "cobble_1",
+                            value = BigDecimal("1.0"),
+                            material = "minecraft:paper",
+                            custommodeldata = 7383,
+                            name = "&e1 CobbleCoin",
+                            lore = listOf("&7Value: 1 CobbleCoin"),
+                            matchOnlyMaterial = false
+                        ),
+                        DenominationConfig(
+                            id = "cobble_5",
+                            value = BigDecimal("5.0"),
+                            material = "minecraft:paper",
+                            custommodeldata = 7384,
+                            name = "&e5 CobbleCoins",
+                            lore = listOf("&7Value: 5 CobbleCoins"),
+                            matchOnlyMaterial = false
+                        ),
+                        DenominationConfig(
+                            id = "cobble_10",
+                            value = BigDecimal("10"),
+                            material = "minecraft:paper",
+                            custommodeldata = 7385,
+                            name = "&e10 CobbleCoins",
+                            lore = listOf("&7Value: 10 CobbleCoins"),
+                            matchOnlyMaterial = false
+                        )
+                    )
                 ),
                 EconomyConfig(
-                    name = "&6Gold Coin",
+                    name = "&eGold Coin",
                     lore = listOf("&8This is a &bcurrency", "&8Lore 2"),
-                    material = "minecraft:gold_ingot",
-                    custommodeldata = 1234,
+                    material = "minecraft:paper",
+                    custommodeldata = 8381,
                     currencyType = "GoldCoins",
-                    balanceStart = BigDecimal(300),
+                    balanceStart = BigDecimal(200),
                     symbol = "$",
                     isPrimary = false,
                     transfer = false,
-                    withdraw = false
-                ),
-                EconomyConfig(
-                    name = "&6Diamond Coin",
-                    lore = listOf("&8This is a &bcurrency", "&8Lore 2"),
-                    material = "minecraft:diamond",
-                    custommodeldata = 1234,
-                    currencyType = "DiamondCoins",
-                    balanceStart = BigDecimal(100),
-                    symbol = "$",
-                    isPrimary = false,
-                    transfer = false,
-                    withdraw = false
+                    withdraw = true,
+                    matchOnlyMaterial = false,
+                    denominations = listOf(
+                        DenominationConfig(
+                            id = "gold_0",
+                            value = BigDecimal("0.5"),
+                            material = "minecraft:paper",
+                            custommodeldata = 8382,
+                            name = "&e0.5 GoldCoins",
+                            lore = listOf("&7Value: 0.5 GoldCoins"),
+                            matchOnlyMaterial = false
+                        ),
+                        DenominationConfig(
+                            id = "gold_1",
+                            value = BigDecimal("1.0"),
+                            material = "minecraft:paper",
+                            custommodeldata = 8383,
+                            name = "&e1 GoldCoin",
+                            lore = listOf("&7Value: 1 GoldCoin"),
+                            matchOnlyMaterial = false
+                        ),
+                        DenominationConfig(
+                            id = "gold_5",
+                            value = BigDecimal("5.0"),
+                            material = "minecraft:paper",
+                            custommodeldata = 8384,
+                            name = "&e5 GoldCoins",
+                            lore = listOf("&7Value: 5 GoldCoins"),
+                            matchOnlyMaterial = false
+                        ),
+                        DenominationConfig(
+                            id = "gold_10",
+                            value = BigDecimal("10"),
+                            material = "minecraft:paper",
+                            custommodeldata = 8385,
+                            name = "&e10 GoldCoins",
+                            lore = listOf("&7Value: 10 GoldCoins"),
+                            matchOnlyMaterial = false
+                        )
+                    )
                 )
             ),
             gui = GuiConfig(

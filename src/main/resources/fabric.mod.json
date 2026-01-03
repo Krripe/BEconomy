@@ -18,9 +18,9 @@
     "beconomy.mixins.json"
   ],
   "depends": {
-    "fabricloader": ">=${loader_version}",
-    "fabric-language-kotlin": ">=${kotlin_loader_version}",
+    "fabricloader": "*",
+    "fabric-language-kotlin": "*",
     "fabric": "*",
-    "minecraft": "${minecraft_version}"
+    "minecraft": ["1.21", "1.21.1", "1.21.2", "1.21.3"]
   }
 }

@@ -165,7 +165,7 @@ class Beconomy : ModInitializer {
                         )
                     )
                     .then(CommandManager.literal("withdraw")
-                        .then(CommandManager.argument("amount", IntegerArgumentType.integer())
+                        .then(CommandManager.argument("amount", DoubleArgumentType.doubleArg(0.01))
                             .then(CommandManager.argument("currencyType", StringArgumentType.string())
                                 .suggests { _, builder ->
                                     config.economy.map { it.currencyType }.forEach { builder.suggest(it) }
@@ -176,6 +176,38 @@ class Beconomy : ModInitializer {
                                     player != null && hasPermission(player, "beconomy.withdraw", 2)
                                 }
                                 .executes { context -> withdraw(context) }
+                            )
+                        )
+                        .then(CommandManager.literal("type")
+                            .then(CommandManager.argument("currencyType", StringArgumentType.string())
+                                .suggests { _, builder ->
+                                    config.economy.map { it.currencyType }.forEach { builder.suggest(it) }
+                                    builder.buildFuture()
+                                }
+                                .then(CommandManager.argument("denomination", StringArgumentType.string())
+                                    .suggests { ctx, builder ->
+                                        val cur = try {
+                                            StringArgumentType.getString(ctx, "currencyType")
+                                        } catch (_: Exception) {
+                                            null
+                                        }
+                                        val cfg = cur?.let { c ->
+                                            config.economy.find { it.currencyType.equals(c, ignoreCase = true) }
+                                        }
+                                        cfg?.denominations?.forEach { denom ->
+                                            val key = denom.id ?: denom.value.toPlainString()
+                                            builder.suggest(key)
+                                        }
+                                        builder.buildFuture()
+                                    }
+                                    .then(CommandManager.argument("count", IntegerArgumentType.integer(1))
+                                        .requires { source ->
+                                            val player = source.player
+                                            player != null && hasPermission(player, "beconomy.withdraw", 2)
+                                        }
+                                        .executes { ctx -> withdrawByType(ctx) }
+                                    )
+                                )
                             )
                         )
                     )
@@ -480,20 +512,133 @@ class Beconomy : ModInitializer {
         return 1
     }
 
+    private data class RuntimeDenomination(
+        val value: BigDecimal,
+        val materialId: String,
+        val customModelData: Int,
+        val name: String,
+        val lore: List<String>,
+        val matchOnlyMaterial: Boolean
+    )
+
+    private fun createWithdrawalStacks(
+        amount: BigDecimal,
+        currencyCfg: ConfigManager.EconomyConfig
+    ): List<ItemStack>? {
+        if (amount <= BigDecimal.ZERO) return null
+        val denoms = mutableListOf<RuntimeDenomination>()
+
+        currencyCfg.denominations?.forEach { denom ->
+            denoms += RuntimeDenomination(
+                value = denom.value,
+                materialId = denom.material,
+                customModelData = denom.custommodeldata,
+                name = denom.name,
+                lore = denom.lore,
+                matchOnlyMaterial = denom.matchOnlyMaterial
+            )
+        }
+        denoms += RuntimeDenomination(
+            value = BigDecimal.ONE,
+            materialId = currencyCfg.material,
+            customModelData = currencyCfg.custommodeldata,
+            name = currencyCfg.name,
+            lore = currencyCfg.lore,
+            matchOnlyMaterial = currencyCfg.matchOnlyMaterial
+        )
+
+        val filtered = denoms.filter { it.value > BigDecimal.ZERO }
+        if (filtered.isEmpty()) return null
+        val sortedDenoms = filtered.sortedByDescending { it.value }
+        var remaining = amount
+        val stacks = mutableListOf<ItemStack>()
+
+        for (denom in sortedDenoms) {
+            if (remaining <= BigDecimal.ZERO) break
+            val divRem = remaining.divideAndRemainder(denom.value)
+            val count = divRem[0].toInt()
+            val remainder = divRem[1]
+
+            if (count <= 0) {
+                remaining = remainder
+                continue
+            }
+
+            val item = Registries.ITEM.get(Identifier.of(denom.materialId))
+            val maxStack = item.maxCount
+            var left = count
+
+            while (left > 0) {
+                val stackCount = if (left > maxStack) maxStack else left
+                left -= stackCount
+                val stack = ItemStack(item, stackCount)
+
+                if (denom.customModelData > 0) {
+                    stack.set(
+                        DataComponentTypes.CUSTOM_MODEL_DATA,
+                        CustomModelDataComponent(denom.customModelData)
+                    )
+                }
+
+                stack.set(DataComponentTypes.CUSTOM_NAME, processAllFormats(denom.name))
+                if (denom.lore.isNotEmpty()) {
+                    val loreTexts = denom.lore.map { line -> processAllFormats(line) }
+                    stack.set(DataComponentTypes.LORE, LoreComponent(loreTexts))
+                }
+                stacks += stack
+            }
+            remaining = remainder
+        }
+        return if (remaining.compareTo(BigDecimal.ZERO) == 0) stacks else null
+    }
+
+    private fun createStacksForDenom(
+        denom: ConfigManager.DenominationConfig,
+        count: Int
+    ): List<ItemStack> {
+        val item = Registries.ITEM.get(Identifier.of(denom.material))
+        val stacks = mutableListOf<ItemStack>()
+        var remaining = count
+        val maxStack = item.maxCount
+
+        while (remaining > 0) {
+            val stackCount = if (remaining > maxStack) maxStack else remaining
+            remaining -= stackCount
+
+            val stack = ItemStack(item, stackCount)
+
+            if (denom.custommodeldata > 0) {
+                stack.set(
+                    DataComponentTypes.CUSTOM_MODEL_DATA,
+                    CustomModelDataComponent(denom.custommodeldata)
+                )
+            }
+
+            stack.set(DataComponentTypes.CUSTOM_NAME, processAllFormats(denom.name))
+
+            if (denom.lore.isNotEmpty()) {
+                val loreTexts = denom.lore.map { line -> processAllFormats(line) }
+                stack.set(DataComponentTypes.LORE, LoreComponent(loreTexts))
+            }
+
+            stacks += stack
+        }
+
+        return stacks
+    }
+
     private fun withdraw(context: CommandContext<ServerCommandSource>): Int {
-        val amount = IntegerArgumentType.getInteger(context, "amount")
+        val amountDouble = DoubleArgumentType.getDouble(context, "amount")
         val player = context.source.player ?: return 0
         val currencyType = StringArgumentType.getString(context, "currencyType")
-        val balance = ConfigManager.getBalance(player.uuid, currencyType)
-        val amountBigDecimal = BigDecimal(amount)
+        val amount = BigDecimal(amountDouble.toString())
 
-        if (amountBigDecimal <= BigDecimal.ZERO) {
+        if (amount <= BigDecimal.ZERO) {
             player.sendMessage(MessageManager.get("noValid"))
             return 0
         }
 
         val currencyConfig = config.economy.find { it.currencyType == currencyType }
-
         if (currencyConfig == null) {
             player.sendMessage(MessageManager.get("currencyNotFound", "currencyType" to currencyType))
             return 0
@@ -504,26 +649,91 @@ class Beconomy : ModInitializer {
             return 0
         }
 
-        if (balance >= amountBigDecimal) {
-            ConfigManager.setBalance(player.uuid, balance.subtract(amountBigDecimal), currencyType)
-
-            val materialItem = Registries.ITEM.get(Identifier.of(currencyConfig.material))
-            val paperStack = ItemStack(materialItem, amount).apply {
-                set(DataComponentTypes.CUSTOM_MODEL_DATA, CustomModelDataComponent(currencyConfig.custommodeldata))
-
-                set(DataComponentTypes.CUSTOM_NAME, processAllFormats(currencyConfig.name))
-
-                val loreList = currencyConfig.lore.map { line ->
-                    processAllFormats(line)
-                }
-                set(DataComponentTypes.LORE, LoreComponent(loreList))
-            }
-
-            player.inventory.offerOrDrop(paperStack)
-            player.sendMessage(MessageManager.get("withdrawSuccess", "amount" to amount.toString(), "currencyType" to currencyType))
-        } else {
+        val balance = ConfigManager.getBalance(player.uuid, currencyType)
+        if (balance < amount) {
             player.sendMessage(MessageManager.get("withdrawFail", "currencyType" to currencyType))
+            return 0
         }
+
+        val stacks = createWithdrawalStacks(amount, currencyConfig)
+        if (stacks.isNullOrEmpty()) {
+            player.sendMessage(MessageManager.get("noValid"))
+            return 0
+        }
+
+        ConfigManager.setBalance(player.uuid, balance.subtract(amount), currencyType)
+
+        stacks.forEach { stack ->
+            player.inventory.offerOrDrop(stack)
+        }
+
+        player.sendMessage(
+            MessageManager.get(
+                "withdrawSuccess",
+                "amount" to amount.toString(),
+                "currencyType" to currencyType
+            )
+        )
+        return 1
+    }
+
+    private fun withdrawByType(context: CommandContext<ServerCommandSource>): Int {
+        val player = context.source.player ?: return 0
+
+        val currencyType = StringArgumentType.getString(context, "currencyType")
+        val denomKey = StringArgumentType.getString(context, "denomination")
+        val count = IntegerArgumentType.getInteger(context, "count")
+
+        if (count <= 0) {
+            player.sendMessage(MessageManager.get("noValid"))
+            return 0
+        }
+
+        val currencyCfg = config.economy.find { it.currencyType == currencyType }
+        if (currencyCfg == null) {
+            player.sendMessage(MessageManager.get("currencyNotFound", "currencyType" to currencyType))
+            return 0
+        }
+
+        if (!currencyCfg.withdraw) {
+            player.sendMessage(MessageManager.get("withdrawNotAllowed", "currencyType" to currencyType))
+            return 0
+        }
+
+        val denoms = currencyCfg.denominations
+        if (denoms.isNullOrEmpty()) {
+            player.sendMessage(MessageManager.get("noValid"))
+            return 0
+        }
+
+        val denom = denoms.firstOrNull { d ->
+            (d.id != null && d.id.equals(denomKey, ignoreCase = true)) ||
+                    d.value.toPlainString().equals(denomKey, ignoreCase = true)
+        } ?: run {
+            player.sendMessage(MessageManager.get("noValid"))
+            return 0
+        }
+
+        val total = denom.value.multiply(BigDecimal(count))
+        val balance = ConfigManager.getBalance(player.uuid, currencyType)
+
+        if (balance < total) {
+            player.sendMessage(MessageManager.get("insufficientFunds", "currencyType" to currencyType))
+            return 0
+        }
+
+        val stacks = createStacksForDenom(denom, count)
+
+        ConfigManager.setBalance(player.uuid, balance.subtract(total), currencyType)
+        stacks.forEach { stack -> player.inventory.offerOrDrop(stack) }
+
+        player.sendMessage(
+            MessageManager.get(
+                "withdrawSuccess",
+                "amount" to total.toString(),
+                "currencyType" to currencyType
+            )
+        )
         return 1
     }
 
@@ -531,20 +741,28 @@ class Beconomy : ModInitializer {
         val player = context.source.player ?: return 0
         val currencyType = StringArgumentType.getString(context, "currencyType")
         val balance = ConfigManager.getBalance(player.uuid, currencyType)
-        val materialItem = Registries.ITEM.get(Identifier.of(config.economy.find { it.currencyType == currencyType }?.material ?: ""))
-        val paperStacks = player.inventory.main.filter { stack ->
-            stack.item == materialItem && isCobbleCoin(stack, currencyType)
-        }
-
         var totalAmount = BigDecimal.ZERO
-        paperStacks.forEach { stack ->
-            totalAmount = totalAmount.add(BigDecimal(stack.count))
-            player.inventory.removeStack(player.inventory.main.indexOf(stack))
+
+        player.inventory.main.forEachIndexed { index, stack ->
+            if (stack.isEmpty) return@forEachIndexed
+
+            val perItemValue = getDenominationValue(stack, currencyType)
+            if (perItemValue != null) {
+                val stackTotal = perItemValue.multiply(BigDecimal(stack.count))
+                totalAmount = totalAmount.add(stackTotal)
+                player.inventory.removeStack(index)
+            }
         }
 
         if (totalAmount > BigDecimal.ZERO) {
             ConfigManager.setBalance(player.uuid, balance.add(totalAmount), currencyType)
-            player.sendMessage(MessageManager.get("depositSuccess", "amount" to totalAmount.toString(), "currencyType" to currencyType))
+            player.sendMessage(
+                MessageManager.get(
+                    "depositSuccess",
+                    "amount" to totalAmount.toString(),
+                    "currencyType" to currencyType
+                )
+            )
         } else {
             player.sendMessage(MessageManager.get("noValid"))
         }
@@ -668,17 +886,34 @@ class Beconomy : ModInitializer {
         return 1
     }
 
-    private fun isCobbleCoin(stack: ItemStack, currencyType: String): Boolean {
-        val config = config.economy.find { it.currencyType == currencyType } ?: return false
+    private fun getDenominationValue(stack: ItemStack, currencyType: String): BigDecimal? {
+        val currencyCfg = config.economy.find { it.currencyType == currencyType } ?: return null
+        val denoms = currencyCfg.denominations.orEmpty()
+        for (denom in denoms) {
+            val denomItem = Registries.ITEM.get(Identifier.of(denom.material))
+            if (stack.item != denomItem) continue
 
-        if (config.matchOnlyMaterial) {
-            val expectedMaterial = Registries.ITEM.get(Identifier.of(config.material))
-            return stack.item == expectedMaterial
+            if (denom.matchOnlyMaterial) {
+                return denom.value
+            }
+
+            val data = stack.get(DataComponentTypes.CUSTOM_MODEL_DATA)?.value
+            if (denom.custommodeldata == 0 || data == denom.custommodeldata) {
+                return denom.value
+            }
         }
 
-        val data = stack.get(DataComponentTypes.CUSTOM_MODEL_DATA)?.value
-        return data == config.custommodeldata
+        val baseItem = Registries.ITEM.get(Identifier.of(currencyCfg.material))
+        if (stack.item != baseItem) return null
+
+        if (currencyCfg.matchOnlyMaterial) {
+            return BigDecimal.ONE
+        }
+
+        val baseData = stack.get(DataComponentTypes.CUSTOM_MODEL_DATA)?.value
+        return if (baseData == currencyCfg.custommodeldata) BigDecimal.ONE else null
     }
+
 
     private fun initializePlayerData(player: ServerPlayerEntity) {
         val playerUUID = player.uuid
