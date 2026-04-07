@@ -19,6 +19,7 @@ import me.lucko.fabric.api.permissions.v0.Permissions
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.command.argument.EntityArgumentType
+import net.minecraft.command.argument.UuidArgumentType.uuid
 import java.math.BigDecimal
 import net.minecraft.component.DataComponentTypes
 import net.minecraft.component.type.CustomModelDataComponent
@@ -337,6 +338,9 @@ class Beconomy : ModInitializer {
             )
         }
     }
+
+    private val uuid_like_regex =
+        Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
     private fun showBalance(context: CommandContext<ServerCommandSource>): Int {
         val player = context.source.player ?: return 0
@@ -1060,7 +1064,7 @@ class Beconomy : ModInitializer {
             val sortedPlayers = getAllPlayersSortedByBalance(player.server, currency.currencyType)
 
             val perPage = guiConfig.headSlots.size
-            if (perPage == 0) return items.filterNotNull()   // <- important
+            if (perPage == 0) return items.filterNotNull()
 
             val maxPage = if (sortedPlayers.isEmpty()) 0 else (sortedPlayers.size - 1) / perPage
             val clampedPage = pageIndex.coerceIn(0, maxPage.coerceAtLeast(0))
@@ -1235,10 +1239,16 @@ class Beconomy : ModInitializer {
         }
 
         fun resolveName(uuid: UUID): String {
-            server.playerManager.getPlayer(uuid)?.let { return it.name.string }
+            server.playerManager.getPlayer(uuid)?.let { player ->
+                return player.gameProfile.name ?: player.name.string
+            }
+
             val gp = server.userCache?.getByUuid(uuid)?.orElse(null)
-            if (gp != null && !gp.name.isNullOrBlank()) return gp.name
-            return uuid.toString()
+            if (gp != null && !gp.name.isNullOrBlank()) {
+                return gp.name
+            }
+
+            return "Unknown"
         }
 
         return balances
@@ -1262,16 +1272,35 @@ class Beconomy : ModInitializer {
         val player = server.playerManager.getPlayer(playerUuid)
         val playerHead = ItemStack(Registries.ITEM.get(Identifier.of("minecraft:player_head")))
 
-        val profile = player?.gameProfile
+        val displayName = when {
+            player != null -> player.gameProfile.name ?: player.name.string
+            playerName.equals("Unknown", ignoreCase = true) -> "Unknown"
+            uuid_like_regex.matches(playerName) -> "Unknown"
+            playerName.length < 36 && uuid().toString().startsWith(playerName) -> "Unknown"
+            else -> playerName
+        }
+
+        val cachedProfile = player?.gameProfile
             ?: server.userCache?.getByUuid(playerUuid)?.orElse(null)
-            ?: GameProfile(playerUuid, playerName)
+
+        val profileName = when {
+            cachedProfile?.name?.isNotBlank() == true -> cachedProfile.name
+            displayName != "Unknown" -> displayName
+            else -> "Player"
+        }.take(16)
+
+        val profile = cachedProfile?.takeIf { it.name == profileName }
+            ?: GameProfile(playerUuid, profileName)
 
         playerHead.set(DataComponentTypes.PROFILE, ProfileComponent(profile))
+
+        val customNameText = processAllFormats("&e$displayName").styled { it.withItalic(false) }
+        playerHead.set(DataComponentTypes.CUSTOM_NAME, customNameText)
 
         val positionStr = position?.toString() ?: ""
 
         val lore = config.gui.headLore.map {
-            it.replace("%playerName%", playerName)
+            it.replace("%playerName%", displayName)
                 .replace("%balance%", ConfigManager.NumberFormatter.format(balance))
                 .replace("%status%", if (player != null) "&aOnline" else "&cOffline")
                 .replace("%position%", positionStr)

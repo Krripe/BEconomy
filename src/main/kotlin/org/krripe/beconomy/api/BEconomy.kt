@@ -20,19 +20,15 @@ object BEconomy {
 
             api?.addEventListener(object : EconomyEventListener {
                 override fun onCurrencyAdded(currencyConfig: ConfigManager.EconomyConfig) {
-                    println("[BEconomy] Currency added: ${currencyConfig.currencyType}")
                 }
 
                 override fun onCurrencyRemoved(currencyType: String) {
-                    println("[BEconomy] Currency removed: $currencyType")
                 }
 
                 override fun onCurrencyModified(currencyConfig: ConfigManager.EconomyConfig) {
-                    println("[BEconomy] Currency modified: ${currencyConfig.currencyType}")
                 }
 
                 override fun onBalanceChanged(playerId: UUID, currencyType: String, newBalance: BigDecimal) {
-                    println("[BEconomy] Balance changed for player $playerId in currency $currencyType: New balance is $newBalance")
                 }
             })
 
