@@ -172,19 +172,37 @@ class CustomGuiScreenHandler(
         return original
     }
 
-    override fun onSlotClick(slotIndex: Int, button: Int, actionType: SlotActionType?, player: PlayerEntity?) {
+    override fun onSlotClick(
+        slotIndex: Int,
+        button: Int,
+        actionType: SlotActionType?,
+        player: PlayerEntity?
+    ) {
         val isCustomSlot = slotIndex in 0 until guiInventory.size()
-        if (isCustomSlot && player is ServerPlayerEntity) {
-            val isRightClick = button == 1
-            interaction.onItemClick(slotIndex, player, isRightClick)
+
+        if (isCustomSlot) {
+            if (player !is ServerPlayerEntity) return
+            if (actionType != SlotActionType.PICKUP) return
+            if (button != 0 && button != 1) return
+            if (guiInventory.getStack(slotIndex).isEmpty) return
+
+            interaction.onItemClick(
+                slotIndex,
+                player,
+                button == 1
+            )
+
             return
         }
 
-        if (actionType == SlotActionType.PICKUP_ALL) {
-            return
-        }
+        if (actionType == SlotActionType.PICKUP_ALL) return
 
-        super.onSlotClick(slotIndex, button, actionType, player)
+        super.onSlotClick(
+            slotIndex,
+            button,
+            actionType,
+            player
+        )
     }
 
     override fun onClosed(player: PlayerEntity?) {

@@ -20,6 +20,11 @@ object MessageManager {
         val withdrawFail: String = "%prefix% <#a75948>Insufficient funds!</#>",
         val removeBalance: String = "%prefix% <#a75948>Removed</#> <#f9fdcb>%amount%</#> <#a75948>from</#> <#cbfdef>%player%!</#>",
         val depositSuccess: String = "%prefix% <#95f151>Successfully deposited</#> <#f9fdcb>%amount%</#> <#d1d1d1>%currencyType%!</#>",
+        val depositBlockSet: String = "%prefix% <#95f151>Deposit block set for</#> <#d1d1d1>%currencyType%</#><#95f151>!</#>",
+        val depositBlockRemoved: String = "%prefix% <#95f151>Deposit block removed successfully!</#>",
+        val depositBlockNotSet: String = "%prefix% <#a75948>The selected block is not a deposit block!</#>",
+        val depositBlockNoTarget: String = "%prefix% <#a75948>You must look at a block within 5 blocks!</#>",
+        val depositGuiDisabled: String = "%prefix% <#a75948>The Deposit GUI is not available for</#> <#d1d1d1>%currencyType%</#><#a75948>!</#>",
         val noValid: String = "%prefix% <#a75948>Invalid funds!</#>",
         val playerNotFound: String = "%prefix% <#a75948>Player</#> <#cbfdef>%player%</#> <#a75948>not found.</#>",
         val currencyNotFound: String = "%prefix% <#a75948>Currency configuration not found for</#> <#d1d1d1>%currencyType%!</#>",
@@ -27,6 +32,8 @@ object MessageManager {
         val balanceHeader: String = "%prefix% &6Balance&8:",
         val currencyLineFormat: String = "&8-> <#d1d1d1>%currency%:</#> <#f9fdcb>%amount%</#> <#f2ff59>%symbol%</#>",
         val transferNotAllowed: String = "%prefix% <#a75948>Transfers are not allowed for the</#> <#d1d1d1>%currencyType%</#> <#a75948>currency!</#>",
+        val payBelowMinimum: String = "%prefix% <#a75948>The minimum payment for</#> <#d1d1d1>%currencyType%</#> <#a75948>is</#> <#f9fdcb>%minimum%</#><#a75948>!</#>",
+        val payAboveMaximum: String = "%prefix% <#a75948>The maximum payment for</#> <#d1d1d1>%currencyType%</#> <#a75948>is</#> <#f9fdcb>%maximum%</#><#a75948>!</#>",
         val invalidTarget: String = "%prefix% <#a75948>The selected target</#> <#f9fdcb>%target%</#> <#a75948>is not valid for this command!</#>",
         val withdrawNotAllowed: String = "%prefix% <#a75948>Withdrawals are not allowed for the</#> <#d1d1d1>%currencyType%</#> <#a75948>currency!</#>",
         val renameSameCurrencyType: String = "%prefix% <#a75948>Old and new currency type cannot be the same!</#>",
@@ -84,6 +91,11 @@ object MessageManager {
         "withdrawFail" -> messages.withdrawFail
         "removeBalance" -> messages.removeBalance
         "depositSuccess" -> messages.depositSuccess
+        "depositBlockSet" -> messages.depositBlockSet
+        "depositBlockRemoved" -> messages.depositBlockRemoved
+        "depositBlockNotSet" -> messages.depositBlockNotSet
+        "depositBlockNoTarget" -> messages.depositBlockNoTarget
+        "depositGuiDisabled" -> messages.depositGuiDisabled
         "noValid" -> messages.noValid
         "playerNotFound" -> messages.playerNotFound
         "currencyNotFound" -> messages.currencyNotFound
@@ -91,6 +103,8 @@ object MessageManager {
         "balanceHeader" -> messages.balanceHeader
         "currencyLineFormat" -> messages.currencyLineFormat
         "transferNotAllowed" -> messages.transferNotAllowed
+        "payBelowMinimum" -> messages.payBelowMinimum
+        "payAboveMaximum" -> messages.payAboveMaximum
         "invalidTarget" -> messages.invalidTarget
         "withdrawNotAllowed" -> messages.withdrawNotAllowed
         "renameSameCurrencyType" -> messages.renameSameCurrencyType

@@ -12,7 +12,7 @@ class BEconomyGTSBridge : GtsEconomy {
             val api = BEconomy.getAPI()
             val currencyType = api.getPrimaryCurrency()?.currencyType ?: return false
             val playerBalance = api.getBalance(player, currencyType)
-            api.setBalance(player, playerBalance + BigDecimal(amount), currencyType)
+            api.setBalance(player, playerBalance + BigDecimal.valueOf(amount), currencyType)
             true
         } catch (e: Exception) {
             e.printStackTrace()
@@ -24,8 +24,8 @@ class BEconomyGTSBridge : GtsEconomy {
         return try {
             val api = BEconomy.getAPI()
             val currencyType = api.getPrimaryCurrency()?.currencyType ?: return false
-            if (!api.hasEnoughFunds(player, BigDecimal(amount), currencyType)) return false
-            api.subtractBalance(player, BigDecimal(amount), currencyType)
+            if (!api.hasEnoughFunds(player, BigDecimal.valueOf(amount), currencyType)) return false
+            api.subtractBalance(player, BigDecimal.valueOf(amount), currencyType)
             true
         } catch (e: Exception) {
             e.printStackTrace()

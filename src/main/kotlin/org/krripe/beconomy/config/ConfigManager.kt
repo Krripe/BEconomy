@@ -20,8 +20,8 @@ object ConfigManager {
     data class Config(
         val commands: List<String> = listOf("beco", "eco"),
         val balanceCommands: List<String> = listOf("bal", "balance"),
+        val numberFormat: NumberFormatConfig = NumberFormatConfig(),
         val economy: MutableList<EconomyConfig> = mutableListOf(),
-        val gui: GuiConfig,
         var localSave: Boolean = true,
         var databaseSave: Boolean = false,
         val database: DatabaseConfig
@@ -46,6 +46,40 @@ object ConfigManager {
         val id: String? = null
     )
 
+    data class NumberFormatConfig(
+        val groupingSeparator: String = ".",
+        val decimalSeparator: String = ",",
+        val useGrouping: Boolean = true,
+        val maxDecimalPlaces: Int = 2
+    )
+
+    data class EconomySubcommandConfig(
+        val balance: List<String> = listOf("balance"),
+        val top: List<String> = listOf("top")
+    )
+
+    data class EconomyCommandConfig(
+        val enabled: Boolean = false,
+        val aliases: List<String> = listOf(),
+        val defaultAction: String = "balance",
+        val balance: Boolean = true,
+        val top: Boolean = true,
+        val subcommands: EconomySubcommandConfig = EconomySubcommandConfig(),
+        val permissions: EconomyCommandPermissionConfig = EconomyCommandPermissionConfig()
+    )
+
+    data class EconomyCommandPermissionConfig(
+        val command: String = "beconomy.custom.%currencyType%",
+        val balance: String = "beconomy.custom.%currencyType%.balance",
+        val balanceOthers: String = "beconomy.custom.%currencyType%.balance.others",
+        val top: String = "beconomy.custom.%currencyType%.top"
+    )
+
+    data class PayConfig(
+        val minimumAmount: BigDecimal = BigDecimal.ZERO,
+        val maximumAmount: BigDecimal = BigDecimal("-1")
+    )
+
     data class EconomyConfig(
         val name: String,
         val lore: List<String>,
@@ -57,53 +91,14 @@ object ConfigManager {
         var isPrimary: Boolean = false,
         val transfer: Boolean = true,
         val withdraw: Boolean = true,
+        val balance: Boolean = true,
+        val top: Boolean = true,
+        val showInGlobalBalance: Boolean = true,
+        val showInGlobalTop: Boolean = true,
+        val customCommands: EconomyCommandConfig = EconomyCommandConfig(),
+        val pay: PayConfig = PayConfig(),
         val matchOnlyMaterial: Boolean = false,
         val denominations: List<DenominationConfig>? = null
-    )
-
-    data class GuiConfig(
-        val title: String = "&6Top Player Balances",
-        val size: Int = 54,
-        val fillersEnabled: Boolean = true,
-        val fillers: MutableList<FillerConfig> = mutableListOf(),
-        val headSlots: List<Int> = listOf(),
-        val nextPageButton: ButtonConfig,
-        val prevPageButton: ButtonConfig,
-        val closeButton: ButtonConfig,
-        val headLore: List<String> = listOf(),
-        val sortButton: ButtonConfig? = null
-    )
-
-    data class GuiItem(
-        val material: String,
-        val name: String,
-        val customModelData: Int = 0,
-        val lore: List<String> = listOf(),
-        val glow: Boolean = false,
-        val hideAdditionalTooltip: Boolean = true,
-        val hideTooltip: Boolean = false
-    )
-
-    data class ButtonConfig(
-        val slot: Int,
-        val material: String,
-        val name: String,
-        val customModelData: Int = 0,
-        val lore: List<String> = listOf(),
-        val glow: Boolean = false,
-        val hideAdditionalTooltip: Boolean = true,
-        val hideTooltip: Boolean = false
-    )
-
-    data class FillerConfig(
-        val name: String = " ",
-        val lore: List<String> = listOf(),
-        val icon: String = "minecraft:light_blue_stained_glass_pane",
-        val slots: List<String> = listOf(),
-        val customModelData: Int? = null,
-        val glow: Boolean = false,
-        val hideAdditionalTooltip: Boolean = true,
-        val hideTooltip: Boolean = false
     )
 
     private val gson = GsonBuilder()
@@ -121,43 +116,270 @@ object ConfigManager {
     fun loadConfig(): Config {
         if (!configFile.exists()) {
             configFile.parentFile.mkdirs()
+
             val defaultConfig = createDefaultConfig()
-            configFile.writeText(gson.toJson(defaultConfig))
+
+            configFile.writeText(
+                gson.toJson(defaultConfig)
+            )
+
+            GuiConfigManager.load()
+
             config = defaultConfig
+            MenuConfigManager.loadAll(defaultConfig.economy)
+
             return defaultConfig
         }
 
         val json = Files.readString(configFile.toPath())
-        val existingConfig = gson.fromJson(json, Config::class.java)
+
+        val root = JsonParser
+            .parseString(json)
+            .asJsonObject
+
+        val legacyGui = root
+            .get("gui")
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
+
+        GuiConfigManager.load(legacyGui)
+
+        var configChanged =
+            root.remove("gui") != null
+
+        if (applyConfigMigrations(root)) {
+            configChanged = true
+        }
+
+        val existingConfig = gson.fromJson(
+            root,
+            Config::class.java
+        )
 
         val defaultConfig = createDefaultConfig()
-        val updatedConfig = mergeConfigs(existingConfig, defaultConfig)
+
+        val updatedConfig = mergeConfigs(
+            existingConfig,
+            defaultConfig
+        )
+
+        config = updatedConfig
+        MenuConfigManager.loadAll(updatedConfig.economy)
 
         if (updatedConfig.databaseSave) {
+
             val dbConfig = updatedConfig.database
+
             if (!DatabaseManager.initialize(dbConfig)) {
-                println("Failed to initialize database. Falling back to local save.")
+
+                println(
+                    "Failed to initialize database. Falling back to local save."
+                )
+
                 updatedConfig.databaseSave = false
                 updatedConfig.localSave = true
-            } else if (existingConfig.localSave && updatedConfig.databaseSave) {
+
+            } else if (
+                existingConfig.localSave &&
+                updatedConfig.databaseSave
+            ) {
+
                 migrateBalancesToDatabase()
             }
-        } else if (updatedConfig.localSave && existingConfig.databaseSave) {
+
+        } else if (
+            updatedConfig.localSave &&
+            existingConfig.databaseSave
+        ) {
+
             migrateBalancesToLocal()
         }
 
-        if (updatedConfig != existingConfig) {
+        if (
+            configChanged ||
+            updatedConfig != existingConfig
+        ) {
+
             saveUpdatedConfig(updatedConfig)
         }
 
-        config = updatedConfig
         return config
+    }
+
+    private fun applyConfigMigrations(root: JsonObject): Boolean {
+        var changed = false
+
+        val numberFormat = if (root.has("numberFormat") && root.get("numberFormat").isJsonObject) {
+            root.getAsJsonObject("numberFormat")
+        } else {
+            JsonObject().also {
+                root.add("numberFormat", it)
+                changed = true
+            }
+        }
+
+        if (!numberFormat.has("groupingSeparator")) {
+            numberFormat.addProperty("groupingSeparator", ".")
+            changed = true
+        }
+        if (!numberFormat.has("decimalSeparator")) {
+            numberFormat.addProperty("decimalSeparator", ",")
+            changed = true
+        }
+        if (!numberFormat.has("useGrouping")) {
+            numberFormat.addProperty("useGrouping", true)
+            changed = true
+        }
+        if (!numberFormat.has("maxDecimalPlaces")) {
+            numberFormat.addProperty("maxDecimalPlaces", 2)
+            changed = true
+        }
+
+        root.get("economy")
+            ?.takeIf { it.isJsonArray }
+            ?.asJsonArray
+            ?.forEach { element ->
+                if (!element.isJsonObject) return@forEach
+
+                val economy = element.asJsonObject
+
+                if (!economy.has("balance")) {
+                    economy.addProperty("balance", true)
+                    changed = true
+                }
+
+                if (!economy.has("top")) {
+                    economy.addProperty("top", true)
+                    changed = true
+                }
+
+                if (!economy.has("showInGlobalBalance")) {
+                    economy.addProperty("showInGlobalBalance", true)
+                    changed = true
+                }
+
+                if (!economy.has("showInGlobalTop")) {
+                    economy.addProperty(
+                        "showInGlobalTop",
+                        economy.get("top").asBoolean
+                    )
+                    changed = true
+                }
+
+                val customCommands = if (
+                    economy.has("customCommands") &&
+                    economy.get("customCommands").isJsonObject
+                ) {
+                    economy.getAsJsonObject("customCommands")
+                } else {
+                    JsonObject().also {
+                        economy.add("customCommands", it)
+                        changed = true
+                    }
+                }
+
+                if (!customCommands.has("enabled")) {
+                    customCommands.addProperty("enabled", false)
+                    changed = true
+                }
+                if (!customCommands.has("aliases")) {
+                    customCommands.add("aliases", gson.toJsonTree(emptyList<String>()))
+                    changed = true
+                }
+                if (!customCommands.has("defaultAction")) {
+                    customCommands.addProperty("defaultAction", "balance")
+                    changed = true
+                }
+                if (!customCommands.has("balance")) {
+                    customCommands.addProperty("balance", true)
+                    changed = true
+                }
+                if (!customCommands.has("top")) {
+                    customCommands.addProperty("top", true)
+                    changed = true
+                }
+                val subcommands = if (
+                    customCommands.has("subcommands") &&
+                    customCommands.get("subcommands").isJsonObject
+                ) {
+                    customCommands.getAsJsonObject("subcommands")
+                } else {
+                    JsonObject().also {
+                        customCommands.add("subcommands", it)
+                        changed = true
+                    }
+                }
+
+                if (!subcommands.has("balance")) {
+                    subcommands.add("balance", gson.toJsonTree(listOf("balance")))
+                    changed = true
+                }
+
+                if (!subcommands.has("top")) {
+                    subcommands.add("top", gson.toJsonTree(listOf("top")))
+                    changed = true
+                }
+                val permissions = if (
+                    customCommands.has("permissions") &&
+                    customCommands.get("permissions").isJsonObject
+                ) {
+                    customCommands.getAsJsonObject("permissions")
+                } else {
+                    JsonObject().also {
+                        customCommands.add("permissions", it)
+                        changed = true
+                    }
+                }
+                if (!permissions.has("command")) {
+                    permissions.addProperty("command", "beconomy.custom.%currencyType%")
+                    changed = true
+                }
+                if (!permissions.has("balance")) {
+                    permissions.addProperty("balance", "beconomy.custom.%currencyType%.balance")
+                    changed = true
+                }
+                if (!permissions.has("balanceOthers")) {
+                    permissions.addProperty("balanceOthers", "beconomy.custom.%currencyType%.balance.others")
+                    changed = true
+                }
+                if (!permissions.has("top")) {
+                    permissions.addProperty("top", "beconomy.custom.%currencyType%.top")
+                    changed = true
+                }
+                val pay = if (
+                    economy.has("pay") &&
+                    economy.get("pay").isJsonObject
+                ) {
+                    economy.getAsJsonObject("pay")
+                } else {
+                    JsonObject().also {
+                        economy.add("pay", it)
+                        changed = true
+                    }
+                }
+                if (!pay.has("minimumAmount")) {
+                    pay.addProperty("minimumAmount", 0)
+                    changed = true
+                }
+                if (!pay.has("maximumAmount")) {
+                    pay.addProperty("maximumAmount", -1)
+                    changed = true
+                }
+            }
+
+        return changed
     }
 
     private fun createDefaultConfig(): Config {
         return Config(
             commands = listOf("beco", "eco"),
             balanceCommands = listOf("bal", "balance"),
+            numberFormat = NumberFormatConfig(
+                groupingSeparator = ".",
+                decimalSeparator = ",",
+                useGrouping = true,
+                maxDecimalPlaces = 2
+            ),
             economy = mutableListOf(
                 EconomyConfig(
                     name = "&eCobble Coin",
@@ -260,56 +482,6 @@ object ConfigManager {
                             matchOnlyMaterial = false
                         )
                     )
-                )
-            ),
-            gui = GuiConfig(
-                title = "&6Top Player Balances",
-                size = 54,
-                fillersEnabled = true,
-                fillers = mutableListOf(
-                    FillerConfig(
-                        name = " ",
-                        lore = listOf(),
-                        icon = "minecraft:black_stained_glass_pane",
-                        slots = listOf("0,1,2,3,4,5,6,7,8,9,17,18,26,27,35,36,44,45,46,47,48,49,50,51,52,53"),
-                        customModelData = null,
-                        glow = false,
-                        hideAdditionalTooltip = true,
-                        hideTooltip = true
-                    )
-                ),
-                headSlots = listOf(
-                    10, 11, 12, 13, 14, 15, 16,
-                    19, 20, 21, 22, 23, 24, 25,
-                    28, 29, 30, 31, 32, 33, 34,
-                    37, 38, 39, 40, 41, 42, 43
-                ),
-                nextPageButton = ButtonConfig(
-                    slot = 50,
-                    material = "minecraft:arrow",
-                    name = "&aNext Page"
-                ),
-                prevPageButton = ButtonConfig(
-                    slot = 48,
-                    material = "minecraft:arrow",
-                    name = "&aPrevious Page"
-                ),
-                closeButton = ButtonConfig(
-                    slot = 49,
-                    material = "minecraft:barrier",
-                    name = "&cClose"
-                ),
-                headLore = listOf(
-                    "&7Name: %playerName%",
-                    "&7Balance: &e%balance%",
-                    "&7Status: %status%"
-                ),
-                sortButton = ButtonConfig(
-                    slot = 52,
-                    material = "minecraft:compass",
-                    name = "&bCurrency: &f%currency%",
-                    customModelData = 0,
-                    lore = listOf("&7Left-click: change currency")
                 )
             ),
             localSave = true,
@@ -455,11 +627,21 @@ object ConfigManager {
         return currency?.symbol ?: ""
     }
 
-    private fun mergeConfigs(existingConfig: Config, defaultConfig: Config): Config {
+    private fun mergeConfigs(
+        existingConfig: Config,
+        defaultConfig: Config
+    ): Config {
         return defaultConfig.copy(
-            commands = existingConfig.commands.ifEmpty { defaultConfig.commands },
-            economy = existingConfig.economy.ifEmpty { defaultConfig.economy },
-            gui = existingConfig.gui,
+            commands = existingConfig.commands.ifEmpty {
+                defaultConfig.commands
+            },
+            balanceCommands = existingConfig.balanceCommands.ifEmpty {
+                defaultConfig.balanceCommands
+            },
+            numberFormat = existingConfig.numberFormat,
+            economy = existingConfig.economy.ifEmpty {
+                defaultConfig.economy
+            },
             localSave = existingConfig.localSave,
             databaseSave = existingConfig.databaseSave,
             database = existingConfig.database
@@ -541,15 +723,29 @@ object ConfigManager {
     }
 
     object NumberFormatter {
-        private val symbols = DecimalFormatSymbols(Locale.getDefault()).apply {
-            groupingSeparator = '.'
-            decimalSeparator = ','
-        }
-
-        private val decimalFormat = DecimalFormat("#,###.##", symbols)
-
         fun format(value: BigDecimal): String {
-            return decimalFormat.format(value)
+            val cfg = config.numberFormat
+            val groupingSeparator = cfg.groupingSeparator.firstOrNull() ?: '.'
+            val decimalSeparator = cfg.decimalSeparator.firstOrNull() ?: ','
+            val maxDecimals = cfg.maxDecimalPlaces.coerceIn(0, 10)
+
+            val symbols = DecimalFormatSymbols(Locale.ROOT).apply {
+                this.groupingSeparator = groupingSeparator
+                this.decimalSeparator = decimalSeparator
+            }
+
+            val pattern = buildString {
+                append(if (cfg.useGrouping) "#,##0" else "0")
+                if (maxDecimals > 0) {
+                    append(".")
+                    repeat(maxDecimals) { append("#") }
+                }
+            }
+
+            return DecimalFormat(pattern, symbols).apply {
+                isGroupingUsed = cfg.useGrouping
+                maximumFractionDigits = maxDecimals
+            }.format(value)
         }
     }
 }
