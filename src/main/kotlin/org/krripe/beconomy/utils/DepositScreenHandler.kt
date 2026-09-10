@@ -5,6 +5,7 @@ import net.minecraft.entity.player.PlayerInventory
 import net.minecraft.inventory.Inventory
 import net.minecraft.inventory.SimpleInventory
 import net.minecraft.item.ItemStack
+import net.minecraft.network.packet.s2c.play.OpenScreenS2CPacket
 import net.minecraft.screen.ScreenHandler
 import net.minecraft.screen.SimpleNamedScreenHandlerFactory
 import net.minecraft.screen.slot.Slot
@@ -523,6 +524,21 @@ class DepositScreenHandler(
         sendContentUpdates()
     }
 
+    fun updateTitle(
+        player: ServerPlayerEntity,
+        title: Text
+    ) {
+        player.networkHandler.sendPacket(
+            OpenScreenS2CPacket(
+                syncId,
+                type,
+                title
+            )
+        )
+
+        syncState()
+    }
+
     private fun getX(
         slotIndex: Int
     ): Int {
@@ -574,23 +590,29 @@ fun openDepositGui(
 fun updateOpenDepositGui(
     player: ServerPlayerEntity,
     newItems: List<GuiItem>,
+    title: Text? = null,
     expectedSize: Int? = null
 ): Boolean {
     val handler =
         player.currentScreenHandler
 
     if (
-        handler is
-                DepositScreenHandler &&
+        handler is DepositScreenHandler &&
         (
                 expectedSize == null ||
-                        expectedSize ==
-                        handler.size
+                        expectedSize == handler.size
                 )
     ) {
         handler.updateGuiContents(
             newItems
         )
+
+        if (title != null) {
+            handler.updateTitle(
+                player,
+                title
+            )
+        }
 
         return true
     }

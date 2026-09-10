@@ -332,31 +332,32 @@ object DepositManager {
             return guiItems.filterNotNull()
         }
 
-        fun refresh() {
-            updateOpenDepositGui(
-                player,
-                buildItems(),
-                size
-            )
-        }
-
-        val titleReplacements =
-            getReplacements(
-                player,
-                economy,
-                state
-            )
-
-        val title =
+        fun buildTitle() =
             processAllFormats(
                 replacePlaceholders(
                     depositConfig.title,
-                    titleReplacements
+                    getReplacements(
+                        player,
+                        economy,
+                        state
+                    )
                 ),
                 player
             ).styled {
                 it.withItalic(false)
             }
+
+        fun refresh() {
+            updateOpenDepositGui(
+                player = player,
+                newItems = buildItems(),
+                title = buildTitle(),
+                expectedSize = size
+            )
+        }
+
+        val title =
+            buildTitle()
 
         openDepositGui(
             player = player,
